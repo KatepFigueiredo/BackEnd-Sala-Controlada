@@ -1,9 +1,11 @@
-from flask import request, jsonify, render_template
+from flask import request, jsonify
 from queries import *
 import time
 
+
 LOTACAO_MAXIMA = 3
 last_saida_pendente = False
+
 
 ultimo_evento = {
     "tipo": None,
@@ -11,31 +13,29 @@ ultimo_evento = {
     "timestamp": None
 }
 
+
 def init_all_routes(app):
     global last_saida_pendente
     global ultimo_evento
 
-    # ========== NOVOS ENDPOINTS PARA LOGS ==========
-    
+    # ========== ENDPOINT: /ultimo_evento ==========
     @app.route('/ultimo_evento', methods=['GET'])
     def obter_ultimo_evento():
         """Frontend faz polling para obter eventos do Arduino"""
         if ultimo_evento["tipo"] is None:
-            return "", 204  # Sem conteúdo - nenhum evento
+            return "", 204
         
         evento = {
             "tipo": ultimo_evento["tipo"],
             "dados": ultimo_evento["dados"]
         }
         
-        # Limpar após enviar (já foi consumido)
         ultimo_evento["tipo"] = None
         ultimo_evento["dados"] = None
         
         return jsonify(evento)
 
-    # ========== ENDPOINTS EXISTENTES (modificados com logging) ==========
-
+    # ========== ENDPOINT: /botao_saida ==========
     @app.route('/botao_saida', methods=['POST'])
     def botao_saida():
         global last_saida_pendente
@@ -45,7 +45,6 @@ def init_all_routes(app):
             print("BOTAO SAIDA: Sala vazia!")
             return jsonify({"status": "erro", "mensagem": "Sala vazia"}), 403
 
-        # Marca pedido de saída para o Arduino
         last_saida_pendente = True
         print(f"BOTAO SAIDA: Ativado! Ocupacao: {ocupacao_atual}/{LOTACAO_MAXIMA}")
         return jsonify({
@@ -54,6 +53,7 @@ def init_all_routes(app):
             "ocupacao": ocupacao_atual
         })
 
+    # ========== ENDPOINT: /botao_saida_status ==========
     @app.route('/botao_saida_status', methods=['GET'])
     def botao_saida_status():
         global last_saida_pendente
@@ -64,6 +64,7 @@ def init_all_routes(app):
         last_saida_pendente = False
         return jsonify({"permitir_saida": True})
     
+    # ========== ENDPOINT: /verificar_rfid ==========
     @app.route('/verificar_rfid', methods=['POST'])
     def verificar_rfid():
         global ultimo_evento
@@ -80,7 +81,6 @@ def init_all_routes(app):
             if ocupacao >= LOTACAO_MAXIMA:
                 resultado = 'lotacao_maxima'
                 print(f"  Sala CHEIA ({ocupacao}/{LOTACAO_MAXIMA})")
-                # Registar evento para o frontend
                 ultimo_evento = {
                     "tipo": "rfid_lotacao",
                     "dados": {"nome": nome_cartao, "ocupacao": ocupacao},
@@ -89,7 +89,6 @@ def init_all_routes(app):
             else:
                 resultado = 'permitido'
                 print(f"  PERMITIDO: {nome_cartao} (Ocupacao: {ocupacao}/{LOTACAO_MAXIMA})")
-                # Registar evento para o frontend
                 ultimo_evento = {
                     "tipo": "rfid_permitido",
                     "dados": {"nome": nome_cartao, "ocupacao": ocupacao},
@@ -98,7 +97,6 @@ def init_all_routes(app):
         else:
             resultado = 'negado'
             print(f"  NEGADO (cartao invalido: {chave_rfid})")
-            # Registar evento para o frontend
             ultimo_evento = {
                 "tipo": "rfid_negado",
                 "dados": {"chave_rfid": chave_rfid},
@@ -107,6 +105,7 @@ def init_all_routes(app):
         
         return jsonify({"status": resultado})
 
+    # ========== ENDPOINT: /ocupacao ==========
     @app.route('/ocupacao', methods=['GET', 'POST'])
     def ocupacao():
         global ultimo_evento
@@ -123,7 +122,6 @@ def init_all_routes(app):
             atualizar_ocupacao(nova_ocupacao)
             print(f"Ocupacao: {ocupacao_atual} -> {nova_ocupacao}")
             
-            # Registar evento de entrada ou saída
             if variacao == 1:
                 tipo_evento = "entrada"
             else:
@@ -148,6 +146,7 @@ def init_all_routes(app):
             "disponivel": LOTACAO_MAXIMA - ocupacao_atual
         })
 
+    # ========== ENDPOINT: /temperatura ==========
     @app.route('/temperatura', methods=['GET', 'POST'])
     def temperatura():
         global ultimo_evento
@@ -156,7 +155,6 @@ def init_all_routes(app):
             data = request.get_json()
             registar_temperatura(data['temperatura'], data['humidade'])
             
-            # Registar evento de temperatura
             ultimo_evento = {
                 "tipo": "temperatura",
                 "dados": {
@@ -171,11 +169,12 @@ def init_all_routes(app):
         row = ultima_temperatura()
         if row:
             return jsonify({
-                "temperatura": float(row[0]),
-                "humidade": float(row[1])
+                "temperatura": float(row),
+                "humidade": float(row)
             })
         return jsonify({"erro": "Sem dados"}), 404
 
+    # ========== ENDPOINT: /cartoes ==========
     @app.route('/cartoes', methods=['GET'])
     def listar_cartoes():
         conn = get_db_connection()
@@ -185,5 +184,5 @@ def init_all_routes(app):
         cur.close()
         conn.close()
         return jsonify({
-            "cartoes": [{"chave_rfid": c[0], "nome_utilizador": c[1]} for c in cartoes]
+            "cartoes": [{"chave_rfid": c, "nome_utilizador": c} for c in cartoes]
         })
