@@ -169,8 +169,8 @@ def init_all_routes(app):
         row = ultima_temperatura()
         if row:
             return jsonify({
-                "temperatura": float(row),
-                "humidade": float(row)
+                "temperatura": float(row[0]),
+                "humidade": float(row[1])
             })
         return jsonify({"erro": "Sem dados"}), 404
 
@@ -184,5 +184,5 @@ def init_all_routes(app):
         cur.close()
         conn.close()
         return jsonify({
-            "cartoes": [{"chave_rfid": c, "nome_utilizador": c} for c in cartoes]
+            "cartoes": [{"chave_rfid": c[0], "nome_utilizador": c[1]} for c in cartoes]
         })
